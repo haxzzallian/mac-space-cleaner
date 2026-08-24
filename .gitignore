@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+reports/*.md
+logs/*.json
+local_config.py
+.claude/
