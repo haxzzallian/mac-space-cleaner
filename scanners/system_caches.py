@@ -12,10 +12,16 @@ cover *everything* using space, not just your tech stack.
   just cache, so this tool never auto-trashes them — you decide per app
   (clear its own in-app cache, or uninstall it).
 - /Applications/*.app -> reported for visibility only, same reason: this
-  tool never uninstalls an app for you.
+  tool never uninstalls an app for you — EXCEPT developer-tool apps (Xcode,
+  Android Studio, Docker Desktop, VS Code, ...), which aren't listed at all,
+  not even for visibility. Identified via Apple's own LSApplicationCategoryType
+  in each app's Info.plist (== "public.app-category.developer-tools") rather
+  than a hardcoded name list — the same lesson core/protected.py already
+  learned: a fixed list of names is exactly what fails.
 """
 from __future__ import annotations
 
+import plistlib
 from pathlib import Path
 from typing import List
 
@@ -24,6 +30,19 @@ from core.fsutil import path_size
 from core.models import CleanupItem, Tier
 
 _DOCKER_CONTAINER_NAME = "com.docker.docker"
+_DEVELOPER_TOOLS_CATEGORY = "public.app-category.developer-tools"
+
+
+def _is_developer_tool_app(app_path: Path) -> bool:
+    """True if `app_path` (a .app bundle) self-declares itself as a
+    developer tool via Apple's own app-category metadata."""
+    info_plist = app_path / "Contents" / "Info.plist"
+    try:
+        with info_plist.open("rb") as f:
+            data = plistlib.load(f)
+    except (OSError, plistlib.InvalidFileException):
+        return False
+    return data.get("LSApplicationCategoryType") == _DEVELOPER_TOOLS_CATEGORY
 
 
 def _iter_top_level(root: Path, skipped: List[str]):
@@ -108,7 +127,9 @@ def scan_app_data(skipped: List[str]) -> List[CleanupItem]:
 
 
 def scan_installed_apps(skipped: List[str]) -> List[CleanupItem]:
-    """Visibility only — this tool never uninstalls an app for you."""
+    """Visibility only — this tool never uninstalls an app for you.
+    Developer-tool apps (Xcode, Android Studio, Docker Desktop, ...) are
+    never listed at all — see _is_developer_tool_app."""
     items: List[CleanupItem] = []
     root = config.APPLICATIONS_DIR
     if not root.exists():
@@ -119,6 +140,8 @@ def scan_installed_apps(skipped: List[str]) -> List[CleanupItem]:
         skipped.append(f"{root} ({exc.__class__.__name__})")
         apps = []
     for entry in apps:
+        if _is_developer_tool_app(entry):
+            continue
         size = path_size(entry, skipped)
         if size < config.INSTALLED_APP_MIN_SIZE_BYTES:
             continue
