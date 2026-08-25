@@ -13,10 +13,16 @@ LARGE_SCAN_ROOTS = [
     HOME / "Desktop",
     HOME / "Documents",
     HOME / "Movies",
-    HOME / "development",  # catches SDK checkouts (sdks/, shorebird/) and
-                            # non-project dirs (e.g. bank_dump/) as single
-                            # big line items — see project_artifacts.py for
-                            # the code-aware scan of development/projects/
+    HOME / "development",  # catches non-project dirs (e.g. a data dump)
+                            # as single big line items. SDK/tool checkouts
+                            # living here are NOT candidates: excluded live
+                            # by large_files.py's bin/ heuristic, and again,
+                            # authoritatively, by core.protected's dynamic
+                            # discovery (shell rc / env / which) applied in
+                            # cleaner.py after all scanners run. See the
+                            # README's Core workflow rules. Project folders
+                            # under development/projects/ are handled by
+                            # project_artifacts.py instead, not here.
 ]
 LARGE_SCAN_MAX_DEPTH = 6  # don't recurse forever into huge trees
 
@@ -97,6 +103,26 @@ KNOWN_CACHE_PATHS = [
     COCOAPODS_CACHE,
     YARN_CACHE,
     HOMEBREW_CACHE,
+]
+
+# --- Protected toolchain roots (see core/protected.py) ---
+# Never propose deleting anything that contains one of these — discovered
+# dynamically each run (shell config, environment, `which`), not just this
+# fixed command list, which is only one of three signals.
+PROTECTED_COMMANDS = [
+    "flutter", "dart", "fvm",
+    "node", "npm", "npx", "yarn", "pnpm",
+    "docker", "docker-compose",
+    "python3", "python", "pip3",
+    "java", "javac", "gradle", "adb",
+    "pod", "git", "ruby", "brew",
+]
+SHELL_RC_FILES = [
+    HOME / ".zshrc",
+    HOME / ".zprofile",
+    HOME / ".bash_profile",
+    HOME / ".bashrc",
+    HOME / ".profile",
 ]
 
 # --- Output locations ---

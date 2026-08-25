@@ -38,7 +38,8 @@ def _group_by_category(items: List[CleanupItem]) -> Dict[str, List[CleanupItem]]
     return by_category
 
 
-def render_terminal(items: List[CleanupItem], skipped: List[str]) -> str:
+def render_terminal(items: List[CleanupItem], skipped: List[str],
+                     held_back: List[CleanupItem] = None) -> str:
     lines: List[str] = []
     grouped = group_by_tier(items)
     grand_total = sum(i.size_bytes for i in items)
@@ -80,6 +81,15 @@ def render_terminal(items: List[CleanupItem], skipped: List[str]) -> str:
     lines.append(f"  of which movable to Trash by this tool: {human_size(trashable_total)}")
     lines.append("=" * 72)
 
+    if held_back:
+        held_total = sum(i.size_bytes for i in held_back)
+        lines.append("")
+        lines.append(f"HELD BACK: {len(held_back)} item(s), {human_size(held_total)}, excluded because")
+        lines.append("  they contain part of your active toolchain (an SDK root, a PATH entry,")
+        lines.append("  or an env var your shell exports) — never proposed for deletion:")
+        for item in held_back:
+            lines.append(f"    - {item.path}")
+
     if skipped:
         lines.append("")
         lines.append(f"NOTE: {len(skipped)} path(s) skipped (permission denied or vanished mid-scan).")
@@ -89,7 +99,8 @@ def render_terminal(items: List[CleanupItem], skipped: List[str]) -> str:
     return "\n".join(lines)
 
 
-def save_markdown(items: List[CleanupItem], skipped: List[str]) -> Path:
+def save_markdown(items: List[CleanupItem], skipped: List[str],
+                   held_back: List[CleanupItem] = None) -> Path:
     config.REPORTS_DIR.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     out_path = config.REPORTS_DIR / f"cleanup-report-{stamp}.md"
@@ -112,6 +123,15 @@ def save_markdown(items: List[CleanupItem], skipped: List[str]) -> Path:
                 note = "" if item.action == "trash" else " _(manual step)_"
                 lines.append(f"- `{loc}` — {human_size(item.size_bytes)}{note}  \n  _{item.reason}_")
             lines.append("")
+
+    if held_back:
+        held_total = sum(i.size_bytes for i in held_back)
+        lines.append(f"## Held back — part of your active toolchain — {human_size(held_total)}\n")
+        lines.append("Excluded because they contain an SDK root, a PATH entry, or an env var "
+                      "your shell exports. Never proposed for deletion.\n")
+        for item in held_back:
+            lines.append(f"- `{item.path}` — {human_size(item.size_bytes)}")
+        lines.append("")
 
     if skipped:
         lines.append("## Skipped paths (permission denied)\n")

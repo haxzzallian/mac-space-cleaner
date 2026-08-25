@@ -28,12 +28,13 @@ from typing import List, Tuple
 import config
 from core.confirm import run_confirmation_flow
 from core.models import CleanupItem
+from core.protected import get_protected_roots, is_ancestor_or_equal
 from core.report import group_by_tier, render_terminal, save_markdown
 from scanners import (android_gradle, dev_caches, docker_scan, large_files,
                        project_artifacts, system_caches)
 
 
-def run_scan() -> Tuple[List[CleanupItem], List[str]]:
+def run_scan() -> Tuple[List[CleanupItem], List[str], List[CleanupItem]]:
     skipped: List[str] = []
     items: List[CleanupItem] = []
     items += dev_caches.scan(skipped)
@@ -43,23 +44,42 @@ def run_scan() -> Tuple[List[CleanupItem], List[str]]:
     items += large_files.scan(skipped)
     items += large_files.scan_sensitive(skipped)
     items += system_caches.scan(skipped)
-    return items, skipped
+
+    # Final, cross-cutting safety net: never propose *deleting* anything that
+    # contains part of the live toolchain (SDK roots, PATH entries, env
+    # vars), no matter which scanner produced the candidate. Only applies to
+    # action=="trash" items — action=="manual" items (Application Support,
+    # installed apps, Docker's aggregate report, ...) were never something
+    # `clean` could move to Trash in the first place, so filtering those too
+    # would only hide legitimate visibility for no safety benefit. See
+    # core/protected.py and the README's Core workflow rules.
+    protected_roots = get_protected_roots(skipped)
+    kept: List[CleanupItem] = []
+    held_back: List[CleanupItem] = []
+    for item in items:
+        if item.action == "trash" and item.path is not None and any(
+                is_ancestor_or_equal(item.path, root) for root in protected_roots):
+            held_back.append(item)
+        else:
+            kept.append(item)
+
+    return kept, skipped, held_back
 
 
-def _print_report(items: List[CleanupItem], skipped: List[str]):
-    print(render_terminal(items, skipped))
-    report_path = save_markdown(items, skipped)
+def _print_report(items: List[CleanupItem], skipped: List[str], held_back: List[CleanupItem]):
+    print(render_terminal(items, skipped, held_back))
+    report_path = save_markdown(items, skipped, held_back)
     print(f"\nFull report saved to: {report_path}")
 
 
 def cmd_scan(_args):
-    items, skipped = run_scan()
-    _print_report(items, skipped)
+    items, skipped, held_back = run_scan()
+    _print_report(items, skipped, held_back)
 
 
 def cmd_clean(_args):
-    items, skipped = run_scan()
-    _print_report(items, skipped)
+    items, skipped, held_back = run_scan()
+    _print_report(items, skipped, held_back)
 
     if not items:
         print("\nNothing found to clean. Nothing to confirm.")

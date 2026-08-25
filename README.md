@@ -49,13 +49,27 @@ are moved to `~/.Trash`, and you decide separately whether to empty it.
 ## Core workflow rules
 
 1. **Nothing here is ever proposed if removing it could stop you from writing
-   or running Flutter, Node.js, Docker, or Python right now.** A build-tools
-   version a project's `build.gradle` actually references, a system image
-   backing a configured Android emulator, a currently-booted iOS
-   Simulator/running AVD, and non-stale project directories are excluded
-   from the results outright — not soft-flagged with a warning you could
-   bulk-approve past. Regenerable caches that need network access to rebuild
-   say so in their reason text, so you know before clearing them offline.
+   or running Flutter, Node.js, Docker, or Python right now.** This rule
+   exists because it was broken once: an early version's generic large-file
+   scanner blob-flagged an entire SDK checkout as "just a big folder," it
+   got approved, and a live Flutter install was gone. The fix wasn't a
+   bigger exclusion list — a fixed list is exactly what failed — it's
+   discovering what's actually load-bearing, fresh, every run:
+   - **SDK/toolchain roots are found dynamically** (`core/protected.py`):
+     parsing your shell rc files for exported `PATH` entries and
+     `*_ROOT`/`*_HOME` variables, reading the live environment for the same,
+     and resolving `which` for common stack commands back to their install
+     root. Anything found this way is hard-excluded — never shown, never
+     confirmable — not soft-flagged with a warning you could bulk-approve
+     past. As defense-in-depth, any folder that merely *looks* like an
+     installed tool (a `bin/` full of executables, one level deep too) is
+     excluded the same way even if nothing above ever referenced it.
+   - A build-tools version a project's `build.gradle` actually references,
+     a system image backing a configured Android emulator, a
+     currently-booted iOS Simulator/running AVD, and non-stale project
+     directories are excluded the same way.
+   - Regenerable caches that need network access to rebuild say so in their
+     reason text, so you know before clearing them offline.
 2. **The full plan is always shown, and always requires your explicit
    approval, before anything is touched — every run, no exceptions.** `scan`
    never deletes anything at all; `clean` shows the identical report first,
@@ -165,6 +179,8 @@ scanners/
 core/
   models.py                CleanupItem, Tier
   fsutil.py                 permission-safe size/mtime helpers
+  protected.py               dynamic SDK/toolchain-root discovery (shell rc,
+                             env, which) — the cross-cutting safety filter
   trash.py                  move_to_trash()
   report.py                 terminal + markdown report rendering
   confirm.py                 tiered interactive confirmation flow

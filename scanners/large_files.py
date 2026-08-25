@@ -8,6 +8,7 @@ it always ends up in its own bannered report tier, never mixed in here.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import List
 
@@ -18,6 +19,36 @@ from core.models import CleanupItem, Tier
 
 def _is_under(path: Path, roots: List[Path]) -> bool:
     return any(path == r or r in path.parents for r in roots)
+
+
+def _has_executable_bin_dir(path: Path) -> bool:
+    bin_dir = path / "bin"
+    if not bin_dir.is_dir():
+        return False
+    try:
+        return any(entry.is_file() and os.access(entry, os.X_OK)
+                   for entry in bin_dir.iterdir())
+    except OSError:
+        return False
+
+
+def _looks_like_installed_tool(path: Path) -> bool:
+    """True if `path` (or one of its immediate subfolders) has a bin/
+    containing an executable — the near-universal shape of an installed
+    SDK/CLI tool, whether direct (shorebird/bin/shorebird) or one level
+    nested in a container folder (sdks/flutter/bin/flutter — exactly the
+    shape that caused a real incident: `sdks` itself has no bin/, only its
+    child `flutter` does). True whether or not the tool is currently on
+    PATH or named in a shell rc file — defense-in-depth alongside
+    core.protected's dynamic discovery, for tools that discovery wouldn't
+    know about yet."""
+    if _has_executable_bin_dir(path):
+        return True
+    try:
+        children = [c for c in path.iterdir() if c.is_dir() and not c.is_symlink()]
+    except OSError:
+        return False
+    return any(_has_executable_bin_dir(child) for child in children)
 
 
 def _scan_root(root: Path, threshold: int, max_depth: int, skipped: List[str],
@@ -48,6 +79,8 @@ def _scan_root(root: Path, threshold: int, max_depth: int, skipped: List[str],
                 continue
             if entry in skip_set:
                 continue
+            if entry.is_dir() and _looks_like_installed_tool(entry):
+                continue  # looks like an installed SDK/CLI tool — never a candidate
             size = path_size(entry, skipped)
             if size >= threshold:
                 hits.append(entry)
