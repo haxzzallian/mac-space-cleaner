@@ -12,18 +12,23 @@ cover *everything* using space, not just your tech stack.
   just cache, so this tool never auto-trashes them — you decide per app
   (clear its own in-app cache, or uninstall it).
 - /Applications/*.app -> reported for visibility only, same reason: this
-  tool never uninstalls an app for you — EXCEPT developer-tool apps (Xcode,
-  Android Studio, Docker Desktop, VS Code, ...), which aren't listed at all,
-  not even for visibility. Identified via Apple's own LSApplicationCategoryType
-  in each app's Info.plist (== "public.app-category.developer-tools") rather
-  than a hardcoded name list — the same lesson core/protected.py already
-  learned: a fixed list of names is exactly what fails.
+  tool never uninstalls an app for you — EXCEPT: (1) developer-tool apps
+  (Xcode, Android Studio, Docker Desktop, VS Code, ...), identified via
+  Apple's own LSApplicationCategoryType in each app's Info.plist (==
+  "public.app-category.developer-tools"); (2) any app you've actually
+  opened recently, identified via Spotlight's kMDItemLastUsedDate (the
+  same field macOS itself uses for "recently used"). Neither is a
+  hardcoded name list — the lesson core/protected.py already learned: a
+  fixed list of names is exactly what fails, and only protects the ones
+  you thought to name (Chrome and Zoom weren't dev tools, but you use
+  them — that's what the last-used check catches generally).
 """
 from __future__ import annotations
 
 import plistlib
+import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import config
 from core.fsutil import path_size
@@ -43,6 +48,32 @@ def _is_developer_tool_app(app_path: Path) -> bool:
     except (OSError, plistlib.InvalidFileException):
         return False
     return data.get("LSApplicationCategoryType") == _DEVELOPER_TOOLS_CATEGORY
+
+
+def _days_since_last_used(app_path: Path, skipped: List[str]) -> Optional[float]:
+    """Days since macOS last recorded this app being opened (Spotlight's
+    kMDItemLastUsedDate), or None if unknown/never recorded — best-effort,
+    never raises. A None here is NOT treated as "definitely unused": the
+    caller only excludes apps with positive recent-use evidence, so a
+    missing/unindexed date just falls through to being shown, same as
+    before this check existed."""
+    try:
+        result = subprocess.run(
+            ["mdls", "-name", "kMDItemLastUsedDate", "-raw", str(app_path)],
+            capture_output=True, text=True, timeout=10)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        skipped.append(f"mdls {app_path} ({exc.__class__.__name__})")
+        return None
+    raw = result.stdout.strip()
+    if not raw or raw == "(null)":
+        return None
+    try:
+        import datetime
+        # mdls -raw date format: "2026-08-25 07:11:23 +0000"
+        last_used = datetime.datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S")
+        return (datetime.datetime.utcnow() - last_used).total_seconds() / 86400
+    except ValueError:
+        return None
 
 
 def _iter_top_level(root: Path, skipped: List[str]):
@@ -128,8 +159,10 @@ def scan_app_data(skipped: List[str]) -> List[CleanupItem]:
 
 def scan_installed_apps(skipped: List[str]) -> List[CleanupItem]:
     """Visibility only — this tool never uninstalls an app for you.
-    Developer-tool apps (Xcode, Android Studio, Docker Desktop, ...) are
-    never listed at all — see _is_developer_tool_app."""
+    Never listed at all: developer-tool apps (Xcode, Android Studio, Docker
+    Desktop, ...) — see _is_developer_tool_app — and anything you've
+    actually opened in the last config.INSTALLED_APP_STALE_DAYS days — see
+    _days_since_last_used."""
     items: List[CleanupItem] = []
     root = config.APPLICATIONS_DIR
     if not root.exists():
@@ -142,6 +175,9 @@ def scan_installed_apps(skipped: List[str]) -> List[CleanupItem]:
     for entry in apps:
         if _is_developer_tool_app(entry):
             continue
+        days_since_used = _days_since_last_used(entry, skipped)
+        if days_since_used is not None and days_since_used < config.INSTALLED_APP_STALE_DAYS:
+            continue  # opened recently — clearly still in use
         size = path_size(entry, skipped)
         if size < config.INSTALLED_APP_MIN_SIZE_BYTES:
             continue

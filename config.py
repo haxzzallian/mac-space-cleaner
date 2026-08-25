@@ -96,6 +96,11 @@ APPLICATIONS_DIR = Path("/Applications")
 SYSTEM_CACHE_MIN_SIZE_BYTES = 20 * 1024 * 1024     # 20 MB — filters noise
 APP_SUPPORT_MIN_SIZE_BYTES = 300 * 1024 * 1024      # 300 MB
 INSTALLED_APP_MIN_SIZE_BYTES = 500 * 1024 * 1024    # 500 MB
+# An app you opened within this many days is clearly still in use — never
+# listed under "Installed application", regardless of size. Longer than
+# STALE_DAYS on purpose: an app you open every couple months is still very
+# much "in use," unlike a build artifact untouched that long.
+INSTALLED_APP_STALE_DAYS = 90
 
 # Already reported by name elsewhere (dev_caches.py) — excluded from the
 # generic ~/Library/Caches sweep so they aren't listed twice.
