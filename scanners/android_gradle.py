@@ -113,11 +113,14 @@ def _is_avd_running(avd: Path) -> bool:
 def scan(skipped: List[str]) -> List[CleanupItem]:
     items: List[CleanupItem] = []
 
-    items += _item_if_exists(
-        config.GRADLE_HOME, "Gradle cache (~/.gradle)", Tier.SAFE,
-        "Gradle's downloaded dependencies and build cache; re-downloaded and "
-        "rebuilt automatically by the next Android/Flutter build." + _NEEDS_NETWORK,
-        skipped)
+    # ~/.gradle is deliberately NOT scanned. It was previously a SAFE-tier
+    # candidate ("technically regenerable"), got cleared, and the resulting
+    # re-download made the next Flutter/Android build take a very long
+    # time — the user asked for it to never be touched again, full stop.
+    # "Regenerable" isn't the same as "cheap to regenerate," and Gradle's
+    # cache is load-bearing enough for a Flutter workflow that it's not
+    # this tool's call to make. If you want it back in scope, see
+    # config.GRADLE_HOME.
 
     items += _item_if_exists(
         config.DART_SERVER_CACHE, "Dart analysis server cache", Tier.SAFE,

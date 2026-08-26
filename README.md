@@ -79,10 +79,14 @@ are moved to `~/.Trash`, and you decide separately whether to empty it.
 Built for a Flutter / Node.js / Docker workflow, so it specifically
 understands: Xcode DerivedData/Archives/DeviceSupport, iOS Simulators, iOS
 device backups, CocoaPods cache, Flutter/Dart `.pub-cache`/`.dartServer`,
-Gradle's cache, the Android SDK (old system images/build-tools, emulator
-AVDs), npm/yarn/pnpm caches, Homebrew cache, Docker's reclaimable space, and
-stray `node_modules` / `Pods` / `build` / `.dart_tool` folders left behind
-in old projects.
+the Android SDK (old system images/build-tools, emulator AVDs), npm/yarn/pnpm
+caches, Homebrew cache, Docker's reclaimable space, and stray `node_modules` /
+`Pods` / `build` / `.dart_tool` folders left behind in old projects.
+
+`~/.gradle` (Gradle's cache) is deliberately **not** scanned at all — it was
+SAFE-tier once, got cleared, and the resulting re-download made the next
+Flutter/Android build take a long time. "Regenerable" isn't the same as
+"cheap to regenerate," and this one wasn't this tool's call to make.
 
 It doesn't stop at the tech stack, though — space fills up from ordinary
 app usage too, long before you ever open an IDE. So it also sweeps every
@@ -130,7 +134,7 @@ Every finding is placed into one of three tiers, always shown in this order:
 
 | Tier | Meaning | How it's confirmed |
 |---|---|---|
-| **SAFE** | Regenerable caches (Xcode DerivedData, CocoaPods/pub/npm/yarn/Homebrew/Gradle caches, any `~/Library/Caches/<app>` subfolder, etc.) | One bulk yes/no for everything in this tier |
+| **SAFE** | Regenerable caches (Xcode DerivedData, CocoaPods/pub/npm/yarn/Homebrew caches, any `~/Library/Caches/<app>` subfolder, etc. — NOT `~/.gradle`, see above) | One bulk yes/no for everything in this tier |
 | **REVIEW** | Regenerable but needs a look (stale `node_modules`/`Pods`/`build`, old Simulators/device backups/AVDs, old Android SDK images, app logs, large personal files) | One yes/no per category |
 | **SENSITIVE** | Anything inside a folder you've listed in `SENSITIVE_PATHS` (empty by default — see Getting Started above) | Each item individually — you must type its exact filename to confirm |
 
