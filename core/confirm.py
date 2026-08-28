@@ -6,6 +6,7 @@ Nothing is deleted permanently — see core.trash.move_to_trash.
 """
 from __future__ import annotations
 
+import subprocess
 from typing import Dict, List, Tuple
 
 from core.models import CleanupItem, Tier
@@ -20,20 +21,29 @@ def _ask_yes_no(prompt: str) -> bool:
 def _trash_items(items: List[CleanupItem], log: List[dict]) -> int:
     freed = 0
     for item in items:
-        if item.action != "trash" or item.path is None:
+        if item.action != "trash":
             continue
         try:
-            dest = move_to_trash(item.path)
+            if item.delete_command:
+                subprocess.run(item.delete_command, check=True,
+                                capture_output=True, text=True)
+                where = f"removed via `{' '.join(item.delete_command)}`"
+            elif item.path is not None:
+                where = str(move_to_trash(item.path))
+            else:
+                continue
             freed += item.size_bytes
             log.append({
                 "path": str(item.path),
-                "trashed_to": str(dest),
+                "trashed_to": where,
                 "size_bytes": item.size_bytes,
                 "category": item.category,
             })
-            print(f"  moved: {item.path} -> {dest}")
+            print(f"  done: {item.path} -> {where}")
+        except subprocess.CalledProcessError as exc:
+            print(f"  FAILED: {item.path}: {exc.stderr.strip() if exc.stderr else exc}")
         except OSError as exc:
-            print(f"  FAILED to move {item.path}: {exc}")
+            print(f"  FAILED: {item.path}: {exc}")
     return freed
 
 

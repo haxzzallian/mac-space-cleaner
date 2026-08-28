@@ -15,10 +15,17 @@ already-installed image/runtime is a fast, local, no-download operation.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Optional
 
 import config
+
+
+def _version_tuple(version: str) -> tuple:
+    """'26.3.1' -> (26, 3, 1), for numeric (not string) comparison."""
+    parts = re.findall(r"\d+", version)
+    return tuple(int(p) for p in parts) if parts else (0,)
 
 
 class AndroidReadiness(NamedTuple):
@@ -33,6 +40,7 @@ class AndroidReadiness(NamedTuple):
 class IOSReadiness(NamedTuple):
     device_count: int
     runtime_count: int
+    highest_version: Optional[str] = None
 
     @property
     def ready(self) -> bool:
@@ -66,15 +74,20 @@ def ios_readiness(skipped: List[str]) -> IOSReadiness:
         skipped.append(f"{config.SIMULATOR_DEVICES} ({exc.__class__.__name__})")
         device_count = 0
 
+    runtime_count = 0
+    highest_version: Optional[str] = None
     try:
         result = subprocess.run(
             ["xcrun", "simctl", "runtime", "list", "-j"],
             capture_output=True, text=True, timeout=15, check=True)
         data = json.loads(result.stdout)
-        runtime_count = sum(1 for r in data.values() if r.get("state") == "Ready")
+        versions = [r.get("version", "") for r in data.values() if r.get("state") == "Ready"]
+        runtime_count = len(versions)
+        if versions:
+            highest_version = max(versions, key=_version_tuple)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
             OSError, json.JSONDecodeError) as exc:
         skipped.append(f"xcrun simctl runtime list ({exc.__class__.__name__})")
-        runtime_count = 0
 
-    return IOSReadiness(device_count=device_count, runtime_count=runtime_count)
+    return IOSReadiness(device_count=device_count, runtime_count=runtime_count,
+                         highest_version=highest_version)

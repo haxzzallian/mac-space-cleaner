@@ -55,9 +55,9 @@ def _readiness_lines(android: AndroidReadiness, ios: IOSReadiness) -> List[str]:
                       "just nothing here for it to protect yet.")
 
     if ios.ready:
+        version_note = f" (iOS {ios.highest_version} is always kept)" if ios.highest_version else ""
         lines.append(f"  iOS Simulator:     READY  — {ios.device_count} device(s) configured, "
-                      f"{ios.runtime_count} runtime(s) installed. Runtimes live outside "
-                      "~/Library entirely and this tool has never scanned or touched them.")
+                      f"{ios.runtime_count} runtime(s) installed{version_note}.")
     else:
         lines.append("  iOS Simulator:     NOT READY — 0 runtimes currently installed. "
                       "You'll need to download one via Xcode's Platforms settings before "

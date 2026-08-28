@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 
 class Tier(str, Enum):
@@ -43,9 +43,16 @@ class CleanupItem:
     reason: str              # human-readable justification shown in the report
     regenerable: bool = True
     is_dir: bool = True
-    # "trash"  -> this tool can move `path` to ~/.Trash on confirmation
+    # "trash"  -> this tool can act on confirmation: move `path` to ~/.Trash,
+    #             or if `delete_command` is set, run that instead (for things
+    #             that can't be trash-moved at all, e.g. an iOS Simulator
+    #             runtime — root-owned, removable only via `xcrun simctl`).
     # "manual" -> report-only; user must act themselves (e.g. `docker system prune`)
     action: str = "trash"
+    # If set, core.confirm runs this command instead of moving `path` to
+    # Trash. `path`/`size_bytes` are still populated for display — just not
+    # used as the mechanism for removal.
+    delete_command: Optional[List[str]] = None
 
     @property
     def size_human(self) -> str:

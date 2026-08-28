@@ -3,8 +3,11 @@
 A small, dependency-free Python 3 CLI that scans your Mac for reclaimable
 disk space — dev-tool caches, stray build artifacts, and ordinary app
 clutter alike — and **always shows you the full itemized plan before
-deleting anything**. Nothing is ever permanently deleted — confirmed items
-are moved to `~/.Trash`, and you decide separately whether to empty it.
+deleting anything**. Confirmed items are moved to `~/.Trash` (recoverable,
+you decide separately whether to empty it) — except iOS Simulator runtimes,
+which can't be trash-moved at all (root-owned, managed by macOS's own asset
+system) and go through Apple's own `xcrun simctl runtime delete` instead,
+the only sanctioned way to remove one.
 
 ## Getting Started (new clone)
 
@@ -75,6 +78,15 @@ are moved to `~/.Trash`, and you decide separately whether to empty it.
      category leaves you with none at all. Android system images, Android
      AVDs, and iOS Simulator devices always keep at least one (the most
      recently used) out of the results, on top of the protections above.
+   - **iOS Simulator runtimes** (the actual OS images Xcode boots a
+     Simulator from — root-owned, under `/System/Library/AssetsV2`, a
+     different thing entirely from a Simulator *device*) are scanned too
+     (`scanners/ios_runtimes.py`): every runtime except the
+     highest-version one is a REVIEW candidate, removed via Apple's own
+     `xcrun simctl runtime delete` on confirmation — trash-moving isn't
+     possible for these, so `CleanupItem.delete_command` carries the
+     sanctioned command instead. The highest-version runtime is always
+     kept, guaranteeing a Simulator can still boot.
    - `~/.gradle` isn't scanned at all, full stop — see below for why.
    - **Every report opens with a "Dev environment readiness" check** (see
      `core/readiness.py`) confirming, in plain terms, whether you'd still be
@@ -188,6 +200,7 @@ local_config.py          your personal overrides (gitignored, not in repo)
 scanners/
   dev_caches.py            Xcode / CocoaPods / Flutter / npm / yarn / Homebrew
   android_gradle.py         Gradle / Dart analysis cache / Android SDK & AVDs
+  ios_runtimes.py            iOS Simulator runtime images (keep-highest-version)
   docker_scan.py            docker system df (report-only)
   project_artifacts.py      stray node_modules / Pods / build / .dart_tool
   large_files.py            generic large files + the sensitive-folder pass
@@ -198,9 +211,12 @@ core/
   fsutil.py                 permission-safe size/mtime helpers
   protected.py               dynamic SDK/toolchain-root discovery (shell rc,
                              env, which) — the cross-cutting safety filter
+  readiness.py               "could I run an emulator/simulator right now?" —
+                             shown at the top of every report
   trash.py                  move_to_trash()
   report.py                 terminal + markdown report rendering
-  confirm.py                 tiered interactive confirmation flow
+  confirm.py                 tiered interactive confirmation flow (trash-move
+                             or a sanctioned delete_command, e.g. simctl)
 reports/                  generated markdown reports (gitignored)
 logs/                      JSON logs of what was actually trashed (gitignored)
 ```

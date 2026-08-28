@@ -31,8 +31,8 @@ from core.models import CleanupItem
 from core.protected import get_protected_roots, is_ancestor_or_equal
 from core.readiness import android_readiness, ios_readiness
 from core.report import group_by_tier, render_terminal, save_markdown
-from scanners import (android_gradle, dev_caches, docker_scan, large_files,
-                       project_artifacts, system_caches)
+from scanners import (android_gradle, dev_caches, docker_scan, ios_runtimes,
+                       large_files, project_artifacts, system_caches)
 
 
 def run_scan() -> Tuple[List[CleanupItem], List[str], List[CleanupItem]]:
@@ -40,6 +40,7 @@ def run_scan() -> Tuple[List[CleanupItem], List[str], List[CleanupItem]]:
     items: List[CleanupItem] = []
     items += dev_caches.scan(skipped)
     items += android_gradle.scan(skipped)
+    items += ios_runtimes.scan(skipped)
     items += docker_scan.scan(skipped)
     items += project_artifacts.scan(skipped)
     items += large_files.scan(skipped)
