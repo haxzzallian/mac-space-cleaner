@@ -68,6 +68,14 @@ are moved to `~/.Trash`, and you decide separately whether to empty it.
      a system image backing a configured Android emulator, a
      currently-booted iOS Simulator/running AVD, and non-stale project
      directories are excluded the same way.
+   - **A whole category can never be bulk-approved down to zero**, either.
+     Real incident: every Android system image was a REVIEW candidate at
+     once, got approved together, and re-downloading one back took a long
+     time — "you can get it back" isn't good enough if approving one
+     category leaves you with none at all. Android system images, Android
+     AVDs, and iOS Simulator devices always keep at least one (the most
+     recently used) out of the results, on top of the protections above.
+   - `~/.gradle` isn't scanned at all, full stop — see below for why.
    - Regenerable caches that need network access to rebuild say so in their
      reason text, so you know before clearing them offline.
 2. **The full plan is always shown, and always requires your explicit
