@@ -13,6 +13,7 @@ from typing import Dict, List
 
 import config
 from core.models import CleanupItem, Tier, human_size
+from core.readiness import AndroidReadiness, IOSReadiness
 
 _TIER_ORDER = [Tier.SAFE, Tier.REVIEW, Tier.SENSITIVE]
 _TIER_TITLES = {
@@ -38,8 +39,36 @@ def _group_by_category(items: List[CleanupItem]) -> Dict[str, List[CleanupItem]]
     return by_category
 
 
+def _readiness_lines(android: AndroidReadiness, ios: IOSReadiness) -> List[str]:
+    lines: List[str] = []
+    lines.append("DEV ENVIRONMENT READINESS — true after this report no matter what you approve below")
+    lines.append("-" * 72)
+
+    if android.ready:
+        lines.append(f"  Android emulator:  READY  — {android.avd_count} AVD(s), "
+                      f"{android.system_image_count} system image(s) installed. "
+                      "At least one of each always stays out of the results below.")
+    else:
+        lines.append("  Android emulator:  NOT READY — 0 system images currently installed. "
+                      "You'll need to download one via Android Studio's SDK Manager before "
+                      "you can run an emulator — this isn't something clean caused, there's "
+                      "just nothing here for it to protect yet.")
+
+    if ios.ready:
+        lines.append(f"  iOS Simulator:     READY  — {ios.device_count} device(s) configured, "
+                      f"{ios.runtime_count} runtime(s) installed. Runtimes live outside "
+                      "~/Library entirely and this tool has never scanned or touched them.")
+    else:
+        lines.append("  iOS Simulator:     NOT READY — 0 runtimes currently installed. "
+                      "You'll need to download one via Xcode's Platforms settings before "
+                      "you can run a simulator — outside this tool's scope either way.")
+
+    return lines
+
+
 def render_terminal(items: List[CleanupItem], skipped: List[str],
-                     held_back: List[CleanupItem] = None) -> str:
+                     held_back: List[CleanupItem] = None,
+                     android: AndroidReadiness = None, ios: IOSReadiness = None) -> str:
     lines: List[str] = []
     grouped = group_by_tier(items)
     grand_total = sum(i.size_bytes for i in items)
@@ -47,6 +76,10 @@ def render_terminal(items: List[CleanupItem], skipped: List[str],
     lines.append("=" * 72)
     lines.append("MAC SPACE CLEANER — PROPOSED CLEANUP PLAN (nothing deleted yet)")
     lines.append("=" * 72)
+
+    if android is not None and ios is not None:
+        lines.append("")
+        lines.extend(_readiness_lines(android, ios))
 
     if not items:
         lines.append("\nNo cleanup candidates found.")
@@ -100,7 +133,8 @@ def render_terminal(items: List[CleanupItem], skipped: List[str],
 
 
 def save_markdown(items: List[CleanupItem], skipped: List[str],
-                   held_back: List[CleanupItem] = None) -> Path:
+                   held_back: List[CleanupItem] = None,
+                   android: AndroidReadiness = None, ios: IOSReadiness = None) -> Path:
     config.REPORTS_DIR.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     out_path = config.REPORTS_DIR / f"cleanup-report-{stamp}.md"
@@ -108,6 +142,12 @@ def save_markdown(items: List[CleanupItem], skipped: List[str],
     grouped = group_by_tier(items)
     grand_total = sum(i.size_bytes for i in items)
     lines = [f"# Cleanup report — {time.strftime('%Y-%m-%d %H:%M:%S')}", ""]
+
+    if android is not None and ios is not None:
+        lines.append("## Dev environment readiness\n")
+        lines.extend(_readiness_lines(android, ios))
+        lines.append("")
+
     lines.append(f"**Grand total found:** {human_size(grand_total)}\n")
 
     for tier in _TIER_ORDER:

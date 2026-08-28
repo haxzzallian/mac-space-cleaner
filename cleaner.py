@@ -29,6 +29,7 @@ import config
 from core.confirm import run_confirmation_flow
 from core.models import CleanupItem
 from core.protected import get_protected_roots, is_ancestor_or_equal
+from core.readiness import android_readiness, ios_readiness
 from core.report import group_by_tier, render_terminal, save_markdown
 from scanners import (android_gradle, dev_caches, docker_scan, large_files,
                        project_artifacts, system_caches)
@@ -67,8 +68,17 @@ def run_scan() -> Tuple[List[CleanupItem], List[str], List[CleanupItem]]:
 
 
 def _print_report(items: List[CleanupItem], skipped: List[str], held_back: List[CleanupItem]):
-    print(render_terminal(items, skipped, held_back))
-    report_path = save_markdown(items, skipped, held_back)
+    # Dev-environment readiness: not a candidate list, doesn't affect what
+    # clean can touch — just makes the "you'll still be able to run an
+    # emulator/simulator after this" guarantee visible every run instead of
+    # asking you to trust the scanners' exclusion logic on faith.
+    readiness_skipped: List[str] = []
+    android = android_readiness(readiness_skipped)
+    ios = ios_readiness(readiness_skipped)
+    skipped = skipped + readiness_skipped
+
+    print(render_terminal(items, skipped, held_back, android, ios))
+    report_path = save_markdown(items, skipped, held_back, android, ios)
     print(f"\nFull report saved to: {report_path}")
 
 

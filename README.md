@@ -76,6 +76,11 @@ are moved to `~/.Trash`, and you decide separately whether to empty it.
      AVDs, and iOS Simulator devices always keep at least one (the most
      recently used) out of the results, on top of the protections above.
    - `~/.gradle` isn't scanned at all, full stop — see below for why.
+   - **Every report opens with a "Dev environment readiness" check** (see
+     `core/readiness.py`) confirming, in plain terms, whether you'd still be
+     able to run an Android emulator and an iOS Simulator after this — so
+     the "at least one is always kept" guarantee above is something you can
+     see holding every single run, not something you have to trust blindly.
    - Regenerable caches that need network access to rebuild say so in their
      reason text, so you know before clearing them offline.
 2. **The full plan is always shown, and always requires your explicit
