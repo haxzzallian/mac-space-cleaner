@@ -68,3 +68,27 @@ def days_since_modified(path: Path) -> float:
     except OSError:
         return 0.0
     return (time.time() - mtime) / 86400
+
+
+def newest_of(paths: List[Path]) -> Optional[Path]:
+    """The most-recently-modified path in `paths`, or None if empty.
+
+    Used everywhere this tool offers a *set* of interchangeable installed
+    things (Xcode iOS DeviceSupport versions, Android system images, AVDs,
+    Simulator devices) as REVIEW candidates: always keep this one out of the
+    results, so bulk-approving the whole category can never leave zero of
+    them behind. A real incident is why this exists — an Android system
+    image got fully cleared this way, and re-downloading one took a long
+    time. "You can always get another one back" isn't good enough if
+    approving one category can take you to none at all.
+    """
+    if not paths:
+        return None
+
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    return max(paths, key=_mtime)

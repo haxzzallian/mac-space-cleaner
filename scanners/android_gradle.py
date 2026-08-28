@@ -9,7 +9,10 @@ Never flags anything that would break the ability to build/run right now:
 - a build-tools version actually referenced by a project's build.gradle(.kts)
 - a system image actually backing a configured AVD
 - an AVD that's currently running (has a lock file)
-are excluded from the results outright, not just soft-flagged.
+are excluded from the results outright, not just soft-flagged. On top of
+that, system images and AVDs always keep at least one (the most recently
+used) out of the results entirely — see core.fsutil.newest_of — so
+bulk-approving a whole category can never leave you with zero of either.
 """
 from __future__ import annotations
 
@@ -19,8 +22,9 @@ from pathlib import Path
 from typing import List, Set
 
 import config
-from core.fsutil import days_since_modified, path_size
+from core.fsutil import days_since_modified, newest_of, path_size
 from core.models import CleanupItem, Tier
+from core.protected import is_ancestor_or_equal
 
 _NEEDS_NETWORK = (
     " Needs an internet connection to rebuild — make sure you're online "
@@ -73,8 +77,15 @@ def _referenced_build_tools_versions(skipped: List[str]) -> Set[str]:
 
 
 def _avd_backed_system_images(skipped: List[str]) -> Set[Path]:
-    """system-images/... paths actually backing a configured AVD — never
-    flag these, independent of whether the AVD itself looks stale."""
+    """system-images/<api>/<tag>/<abi> paths actually backing a configured
+    AVD — never flag these, independent of whether the AVD itself looks
+    stale.
+
+    NOTE: these are always *deeper* than the android-XX/ directories scan()
+    iterates (config.ini's image.sysdir.1= includes the tag/abi segments
+    too) — a caller must check ancestry (is_ancestor_or_equal), not exact
+    equality, against this set. Getting that wrong once already meant this
+    protection silently never matched anything."""
     backed: Set[Path] = set()
     avd_dir = config.ANDROID_HOME / "avd"
     if not avd_dir.exists():
@@ -133,7 +144,10 @@ def scan(skipped: List[str]) -> List[CleanupItem]:
         skipped)
 
     # Emulator images (AVDs) — large, keep the ones you actively use or that
-    # are currently running.
+    # are currently running. Also always keep at least one AVD out of the
+    # results entirely (the most recently used), even if none are running
+    # right now — bulk-approving this category must never be able to leave
+    # you with zero emulators.
     avd_dir = config.ANDROID_HOME / "avd"
     if avd_dir.exists():
         try:
@@ -141,9 +155,11 @@ def scan(skipped: List[str]) -> List[CleanupItem]:
         except OSError as exc:
             skipped.append(f"{avd_dir} ({exc.__class__.__name__})")
             avds = []
-        for avd in avds:
-            if _is_avd_running(avd):
-                continue  # currently running — never a candidate
+        candidates = [a for a in avds if not _is_avd_running(a)]
+        keep = newest_of(candidates)
+        for avd in candidates:
+            if avd == keep:
+                continue  # most recently used of what's left — always kept
             size = path_size(avd, skipped)
             if size <= 0:
                 continue
@@ -157,7 +173,11 @@ def scan(skipped: List[str]) -> List[CleanupItem]:
                 regenerable=True, is_dir=True))
 
     # SDK system images (one per API level + ABI) — big, re-downloadable,
-    # except the ones actively backing a configured AVD.
+    # except the ones actively backing a configured AVD, AND always keeping
+    # at least one (the most recently used of what's left) out of the
+    # results — a real incident is exactly why: every system image got
+    # cleared in one category approval, and re-downloading one back took a
+    # long time. You must always have at least one to fall back on.
     sysimg_dir = config.ANDROID_SDK_ROOT / "system-images"
     if sysimg_dir.exists():
         avd_backed = _avd_backed_system_images(skipped)
@@ -166,9 +186,12 @@ def scan(skipped: List[str]) -> List[CleanupItem]:
         except OSError as exc:
             skipped.append(f"{sysimg_dir} ({exc.__class__.__name__})")
             api_dirs = []
-        for api_dir in api_dirs:
-            if api_dir.resolve() in avd_backed:
-                continue  # backs a configured emulator — never a candidate
+        candidates = [d for d in api_dirs
+                      if not any(is_ancestor_or_equal(d, backed) for backed in avd_backed)]
+        keep = newest_of(candidates)
+        for api_dir in candidates:
+            if api_dir == keep:
+                continue  # always keep at least one system image available
             size = path_size(api_dir, skipped)
             if size <= 0:
                 continue

@@ -3,6 +3,9 @@ Flutter/Dart, npm/yarn/pnpm, Homebrew.
 
 Never flags a currently-booted iOS Simulator — that's excluded from the
 results outright (see _booted_simulator_udids), not just soft-flagged.
+At least one Simulator device (the most recently used of what's left)
+always stays out of the results too, so a bulk category approval can never
+leave you with zero — see core.fsutil.newest_of.
 """
 from __future__ import annotations
 
@@ -11,7 +14,7 @@ import subprocess
 from typing import List, Set
 
 import config
-from core.fsutil import days_since_modified, path_size
+from core.fsutil import days_since_modified, newest_of, path_size
 from core.models import CleanupItem, Tier
 
 _NEEDS_NETWORK = (
@@ -115,7 +118,10 @@ def scan(skipped: List[str]) -> List[CleanupItem]:
 
     # iOS Simulator devices — recreated by Xcode/simctl, but review before
     # removing one you actively test with. Currently-booted ones are never
-    # a candidate at all.
+    # a candidate at all, and at least one (the most recently used of
+    # what's left) always stays out of the results too — the same
+    # bulk-approve-to-zero risk that hit Android system images applies
+    # here identically.
     if config.SIMULATOR_DEVICES.exists():
         booted = _booted_simulator_udids(skipped)
         try:
@@ -123,9 +129,11 @@ def scan(skipped: List[str]) -> List[CleanupItem]:
         except OSError as exc:
             skipped.append(f"{config.SIMULATOR_DEVICES} ({exc.__class__.__name__})")
             devices = []
-        for dev in devices:
-            if dev.name in booted:
-                continue  # currently booted — never a candidate
+        candidates = [d for d in devices if d.name not in booted]
+        keep = newest_of(candidates)
+        for dev in candidates:
+            if dev == keep:
+                continue  # most recently used of what's left — always kept
             size = path_size(dev, skipped)
             if size <= 0:
                 continue
