@@ -105,8 +105,16 @@ def _avd_backed_system_images(skipped: List[str]) -> Set[Path]:
             skipped.append(f"{config_ini} ({exc.__class__.__name__})")
             continue
         for line in text.splitlines():
-            if line.startswith("image.sysdir.1="):
-                rel = line.split("=", 1)[1].strip()
+            # Real INI-style parse (key = value or key=value — Android Studio
+            # rewrites this file and isn't guaranteed to keep the same
+            # spacing every time) — NOT a `startswith("key=")` exact-prefix
+            # check. That exact bug already happened once: the file had
+            # "image.sysdir.1 = ..." (a space before "="), the prefix check
+            # never matched, and this protection silently did nothing while
+            # still claiming to guard the path.
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "image.sysdir.1":
+                rel = value.strip()
                 if rel:
                     backed.add((config.ANDROID_SDK_ROOT / rel).resolve())
     return backed
